@@ -3,7 +3,7 @@
 ## Development Setup
 
 ```bash
-git clone https://github.com/yourusername/ais-tracker-ha
+git clone https://github.com/MedizinPumPer/ais-tracker-ha
 cd ais-tracker-ha
 
 # Symlink into a local HA dev instance
@@ -23,7 +23,7 @@ async def test():
     async with websockets.connect("wss://stream.aisstream.io/v0/stream") as ws:
         await ws.send(json.dumps({
             "APIKey": API_KEY,
-            "BoundingBoxes": [[[52.80, 9.20], [52.90, 9.35]]]
+            "BoundingBoxes": [[[52.51, 13.39], [52.51, 13.39]]]
         }))
         print("Connected! Waiting for ships…")
         msg = await asyncio.wait_for(ws.recv(), timeout=30)

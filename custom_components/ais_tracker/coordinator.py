@@ -93,11 +93,16 @@ class AISCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self._radius_km: float   = entry.options.get(CONF_RADIUS, entry.data[CONF_RADIUS])
         self._main_task: asyncio.Task | None    = None
         self._cleanup_task: asyncio.Task | None = None
-        self._nmea_parts: dict[tuple, dict]     = {}  # multi-part NMEA buffer
+        self._nmea_parts: dict[tuple, dict]     = {}
+        self._msg_count: int = 0  # total messages received (for debugging)
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     async def async_start(self) -> None:
+        _LOGGER.info(
+            "AIS Tracker starting – source=%s lat=%.4f lon=%.4f radius=%.1f km",
+            self._source, self._home_lat, self._home_lon, self._radius_km,
+        )
         if self._source == SOURCE_AISSTREAM:
             self._main_task = self.hass.async_create_task(
                 self._aisstream_loop(), name="ais_tracker_aisstream"
@@ -122,11 +127,9 @@ class AISCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     # ── Internal ship management ──────────────────────────────────────────────
 
     def _update_ship(self, mmsi: str, patch: dict[str, Any]) -> None:
-        """Merge patch into ship record, fire appear event for new ships."""
         is_new = mmsi not in self._ships
         ship = self._ships.setdefault(mmsi, {"mmsi": mmsi})
 
-        # Only apply non-None, non-empty values so we don't overwrite good data
         for k, v in patch.items():
             if v is not None and v != "":
                 ship[k] = v
@@ -141,14 +144,22 @@ class AISCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             )
 
         if is_new:
-            _LOGGER.info("AIS: new ship in range – %s (%s)", ship.get("name", "?"), mmsi)
+            _LOGGER.info(
+                "AIS: ✅ new ship – name='%s' mmsi=%s dist=%.2f km",
+                ship.get("name", "?"), mmsi, ship.get("distance_km", -1),
+            )
             self.hass.bus.async_fire(EVENT_SHIP_APPEARED, self._event_data(ship))
+        else:
+            _LOGGER.debug(
+                "AIS: update – name='%s' mmsi=%s speed=%s kn",
+                ship.get("name", "?"), mmsi, ship.get("speed"),
+            )
 
         self.async_set_updated_data(dict(self._ships))
 
     def _remove_ship(self, mmsi: str) -> None:
         ship = self._ships.pop(mmsi, {})
-        _LOGGER.info("AIS: ship left range – %s (%s)", ship.get("name", "?"), mmsi)
+        _LOGGER.info("AIS: ship left – name='%s' mmsi=%s", ship.get("name", "?"), mmsi)
         self.hass.bus.async_fire(EVENT_SHIP_DEPARTED, self._event_data(ship))
 
     @staticmethod
@@ -182,34 +193,61 @@ class AISCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         subscribe = {
             "APIKey": self._entry.data[CONF_API_KEY],
             "BoundingBoxes": [bbox],
-            "FilterMessageTypes": ["PositionReport", "ShipStaticData"],
+            # No FilterMessageTypes → receive ALL types so we can log unexpected ones
         }
+
+        _LOGGER.info("AIS aisstream.io: bounding box = %s", bbox)
 
         while True:
             try:
+                _LOGGER.debug("AIS aisstream.io: connecting...")
                 async with websockets.connect(
                     "wss://stream.aisstream.io/v0/stream",
                     ping_interval=20,
                     ping_timeout=30,
                 ) as ws:
                     await ws.send(json.dumps(subscribe))
-                    _LOGGER.info("AIS Tracker: connected to aisstream.io (radius %s km)", self._radius_km)
+                    _LOGGER.info("AIS aisstream.io: ✅ connected, subscription sent")
+
                     async for raw in ws:
+                        self._msg_count += 1
                         try:
-                            self._handle_aisstream(json.loads(raw))
+                            msg = json.loads(raw)
+                            mtype = msg.get("MessageType", "")
+
+                            # Log first 10 messages in full so we can debug
+                            if self._msg_count <= 10:
+                                _LOGGER.info(
+                                    "AIS raw msg #%d type=%s: %s",
+                                    self._msg_count, mtype, raw[:300],
+                                )
+                            elif self._msg_count % 50 == 0:
+                                _LOGGER.debug("AIS: %d messages received so far", self._msg_count)
+
+                            if mtype in ("PositionReport", "ShipStaticData"):
+                                self._handle_aisstream(msg)
+                            elif mtype:
+                                _LOGGER.debug("AIS: unhandled MessageType=%s", mtype)
+                            else:
+                                # Could be an error/status message from aisstream.io
+                                _LOGGER.warning("AIS aisstream.io: no MessageType in msg: %s", raw[:200])
+
                         except Exception as exc:
-                            _LOGGER.debug("aisstream parse error: %s", exc)
+                            _LOGGER.error("AIS: parse error on msg #%d: %s | raw: %s", self._msg_count, exc, raw[:200])
+
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                _LOGGER.warning("aisstream.io disconnected (%s) – retry in 30 s", exc)
+                _LOGGER.warning("AIS aisstream.io: disconnected (%s) – retry in 30 s", exc)
                 await asyncio.sleep(30)
 
     def _handle_aisstream(self, msg: dict) -> None:
         mtype = msg.get("MessageType", "")
         meta  = msg.get("MetaData", {})
         mmsi  = str(meta.get("MMSI", "")).strip()
-        if not mmsi:
+
+        if not mmsi or mmsi == "0":
+            _LOGGER.debug("AIS: skipping msg with no MMSI, type=%s", mtype)
             return
 
         if mtype == "PositionReport":
@@ -252,7 +290,7 @@ class AISCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                _LOGGER.warning("RTL-SDR error (%s) – retry in 10 s", exc)
+                _LOGGER.warning("AIS RTL-SDR: error (%s) – retry in 10 s", exc)
                 await asyncio.sleep(10)
 
     async def _nmea_udp(self, host: str, port: int) -> None:
@@ -270,7 +308,7 @@ class AISCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                             pass
 
         transport, _ = await loop.create_datagram_endpoint(_UDP, local_addr=(host, port))
-        _LOGGER.info("AIS Tracker: listening NMEA UDP %s:%s", host, port)
+        _LOGGER.info("AIS RTL-SDR: ✅ listening NMEA UDP %s:%s", host, port)
         try:
             while True:
                 self._parse_nmea(await queue.get())
@@ -279,7 +317,7 @@ class AISCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
 
     async def _nmea_tcp(self, host: str, port: int) -> None:
         reader, writer = await asyncio.open_connection(host, port)
-        _LOGGER.info("AIS Tracker: connected NMEA TCP %s:%s", host, port)
+        _LOGGER.info("AIS RTL-SDR: ✅ connected NMEA TCP %s:%s", host, port)
         try:
             while True:
                 line = await reader.readline()
@@ -307,7 +345,7 @@ class AISCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                     ordered = [self._nmea_parts.pop(key)[i] for i in range(1, total + 1)]
                     self._process_decoded(ais_decode(*ordered))
         except Exception as exc:
-            _LOGGER.debug("NMEA parse error: %s | '%s'", exc, sentence)
+            _LOGGER.debug("AIS NMEA parse error: %s | '%s'", exc, sentence)
 
     def _process_decoded(self, decoded: Any) -> None:
         try:
@@ -323,7 +361,6 @@ class AISCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         if not mmsi:
             return
 
-        # Distance filter for RTL-SDR (aisstream.io does this server-side)
         if lat is not None and lon is not None:
             if haversine_km(self._home_lat, self._home_lon, lat, lon) > self._radius_km:
                 return
