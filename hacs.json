@@ -1,0 +1,6 @@
+{
+  "name": "AIS Ship Tracker",
+  "description": "Track ships on rivers and waterways in real-time via aisstream.io or local RTL-SDR.",
+  "render_readme": true,
+  "homeassistant": "2024.1.0"
+}

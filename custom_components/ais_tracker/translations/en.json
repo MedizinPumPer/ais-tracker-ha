@@ -1,0 +1,52 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "AIS Ship Tracker",
+        "description": "Choose your AIS data source.",
+        "data": { "source": "Data source" }
+      },
+      "aisstream": {
+        "title": "aisstream.io",
+        "description": "Create a free API key at [aisstream.io]({url}).",
+        "data": {
+          "api_key":   "API Key",
+          "latitude":  "Latitude",
+          "longitude": "Longitude",
+          "radius":    "Radius (km)"
+        }
+      },
+      "rtlsdr": {
+        "title": "RTL-SDR / AIS-catcher",
+        "description": "Start AIS-catcher with `AIS-catcher -u 127.0.0.1 12345`.",
+        "data": {
+          "host":      "Host / IP",
+          "port":      "Port",
+          "protocol":  "Protocol",
+          "latitude":  "Latitude",
+          "longitude": "Longitude",
+          "radius":    "Radius (km)"
+        }
+      }
+    },
+    "error": {
+      "invalid_api_key": "Invalid API key.",
+      "cannot_connect":  "Connection failed."
+    },
+    "abort": {
+      "already_configured": "Integration already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "description": "Watchlist: {watchlist_hint}",
+        "data": {
+          "radius":    "Radius (km)",
+          "watchlist": "Watchlist (MMSI)"
+        }
+      }
+    }
+  }
+}
