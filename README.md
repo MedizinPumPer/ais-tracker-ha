@@ -4,7 +4,7 @@
 > Unterstützt **aisstream.io** (kein Hardware) und **RTL-SDR / AIS-catcher** (lokal, kein Cloud-Abo).
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-[![Validate](https://github.com/yourusername/ais-tracker-ha/actions/workflows/validate.yml/badge.svg)](https://github.com/yourusername/ais-tracker-ha/actions)
+[![Validate](https://github.com/MedizinPumPer/ais-tracker-ha/actions/workflows/validate.yml/badge.svg)](https://github.com/MedizinPumPer/ais-tracker-ha/actions)
 
 ---
 
@@ -23,7 +23,7 @@
 ### Via HACS (empfohlen)
 
 1. **HACS** öffnen → **Integrations** → ⋮ → **Custom repositories**
-2. URL: `https://github.com/yourusername/ais-tracker-ha` | Kategorie: **Integration**
+2. URL: `https://github.com/MedizinPumPer/ais-tracker-ha` | Kategorie: **Integration**
 3. **AIS Ship Tracker** suchen → **Herunterladen**
 4. Home Assistant **neu starten**
 5. **Einstellungen → Geräte & Dienste → + Hinzufügen → AIS Ship Tracker**
