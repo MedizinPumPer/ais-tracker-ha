@@ -2,11 +2,11 @@
   "domain": "ais_tracker",
   "name": "AIS Ship Tracker",
   "version": "1.0.0",
-  "documentation": "https://github.com/yourusername/ais-tracker-ha",
-  "issue_tracker": "https://github.com/yourusername/ais-tracker-ha/issues",
+  "documentation": "https://github.com/MedizinPumPer/ais-tracker-ha",
+  "issue_tracker": "https://github.com/MedizinPumPer/ais-tracker-ha/issues",
   "requirements": ["websockets>=12.0", "pyais>=2.7.0"],
   "config_flow": true,
   "iot_class": "cloud_push",
-  "codeowners": ["@yourusername"],
+  "codeowners": ["@MedizinPumPer"],
   "integration_type": "service"
 }
